@@ -1,60 +1,73 @@
 # main.py
 import asyncio
-from browser_controller import AsyncBrowserController
-from llm_translator import translate_command_to_action
+import logging
+
+from interaction_agent import InteractionAgent
+# Configure basic logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 async def main():
-    controller = AsyncBrowserController()
+    # Instantiate the agent that encapsulates controller and translation
+    agent = InteractionAgent()
     try:
-        await controller.setup(headless=False) # Start non-headless for debugging
+        # Setup the agent (which internally sets up the browser)
+        # Set headless=True for background operation, False for visible browser
+        await agent.setup(headless=False)
+
+        print("\nBrowser Navigation Agent Initialized.")
+        print("Enter your commands below (e.g., 'Go to google.com', 'Type 'playwright' into the search bar', 'Click the first search result', 'scroll down', 'quit').")
 
         while True:
             try:
-                command = input("Enter command (or 'quit' to exit): ")
-                if command.lower() == 'quit':
-                    break
+                command = input("> ")
                 if not command:
                     continue
+                if command.lower() in ['quit', 'exit']:
+                    logger.info("Exit command received.")
+                    break
 
-                current_state = await controller.get_current_state()
-                print(f"Current State: {current_state}")
+                # Use the agent's interact method
+                result = await agent.interact(command)
 
-                action_plan = await translate_command_to_action(command, current_state)
-
-                if not action_plan:
-                    print("Failed to get action plan from LLM.")
-                    continue
-
-                action_name = action_plan.get("action")
-                params = action_plan.get("parameters", {})
-
-                result = None
-                if action_name == "navigate":
-                    result = await controller.navigate(**params)
-                elif action_name == "click":
-                    result = await controller.click(**params)
-                elif action_name == "type":
-                    result = await controller.type(**params)
-                elif action_name == "scroll":
-                    result = await controller.scroll(**params)
+                # Provide user feedback based on the result
+                if result.get("success"):
+                    print(f"Action successful.")
+                    # Optionally print specific results like new URL
+                    if "url" in result:
+                        print(f"  Current URL: {result['url']}")
                 else:
-                    print(f"Unknown action: {action_name}")
-                    result = {"success": False, "error": f"Unknown action: {action_name}"}
+                    print(f"Action failed: {result.get('error', 'Unknown error')}")
 
-                print(f"Action Result: {result}")
                 print("-" * 20)
 
-
             except KeyboardInterrupt:
-                print("\nExiting...")
+                logger.info("\nKeyboard interrupt detected. Exiting...")
                 break
             except Exception as e:
-                print(f"An error occurred in the main loop: {e}")
-                # Optionally attempt to recover or just break
+                # Catch unexpected errors in the loop itself
+                logger.error(f"An error occurred in the main loop: {e}", exc_info=True)
+                print(f"An unexpected error occurred: {e}")
+                # Decide whether to break or continue
                 # break
 
+    except Exception as e:
+        # Catch errors during agent setup
+        logger.error(f"Failed to initialize or run the agent: {e}", exc_info=True)
+        print(f"Critical error during setup: {e}")
     finally:
-        await controller.teardown()
+        # Ensure cleanup happens
+        logger.info("Shutting down agent...")
+        await agent.close()
+        logger.info("Agent shutdown complete.")
+        print("Browser closed. Exiting program.")
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Handle potential asyncio event loop issues on Windows/some environments
+    # asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy()) # Uncomment if needed on Windows
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        # Handle Ctrl+C if it happens outside the main async loop's try/except
+        print("\nExiting program due to user interrupt.")
