@@ -1,17 +1,15 @@
-# main.py
+
 import asyncio
 import logging
 import argparse
-import json # Make sure json is imported
+import json
 
 from interaction_agent import InteractionAgent
 
-# Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# --- Command Line Argument Parsing ---
-# ... (argument parsing remains the same) ...
+
 parser = argparse.ArgumentParser(description="Run Browser Navigation Agent with OS Control")
 parser.add_argument(
     "--proxy",
@@ -22,14 +20,14 @@ parser.add_argument(
 parser.add_argument(
     "--load-extension",
     type=str,
-    nargs='*', # Allows multiple extension paths
+    nargs='*',
     default=None,
     help="Paths to unpacked browser extensions to load"
 )
 parser.add_argument(
     "--start-url",
     type=str,
-    default="https://www.google.com", # Start with Google by default
+    default="https://www.google.com",
     help="The initial URL to navigate to when the browser starts"
 )
 args = parser.parse_args()
@@ -37,7 +35,6 @@ args = parser.parse_args()
 async def main():
     agent = InteractionAgent(proxy_config=args.proxy, extension_paths=args.load_extension)
     try:
-        # Setup is synchronous
         agent.setup(initial_url=args.start_url)
 
         print("\nBrowser Navigation Agent Initialized (OS Control Mode).")
@@ -48,8 +45,6 @@ async def main():
 
         while True:
             try:
-                # Use asyncio.to_thread for synchronous input in async context
-                # to avoid blocking the event loop entirely while waiting for user input
                 command_input = await asyncio.to_thread(input, "> ")
 
                 if not command_input:
@@ -59,31 +54,25 @@ async def main():
                     break
 
                 result = {}
-                # --- Handle Extraction Command ---
                 if command_input.lower().startswith("extract:"):
                     query = command_input[len("extract:"):].strip()
                     if not query:
                         print("Please provide a query after 'extract:'. Example: 'extract: the price'")
                         continue
                     print(f"--- Performing Extraction: '{query}' ---")
-                    # Use await as agent.extract is async
                     result = await agent.extract(query)
                     print("--- Extraction Result ---")
-                    # Ensure result is printable, handle potential non-JSON data
                     try:
                         print(json.dumps(result, indent=2))
                     except TypeError:
-                         print(result) # Print raw if not JSON serializable
+                         print(result) 
                     print("-" * 20)
                     continue
 
-                # --- Handle Interaction Command ---
                 print(f"--- Sending Command: '{command_input}' ---")
-                # ******* CHANGED: Use await as agent.interact is now async *******
                 result = await agent.interact(command_input)
 
-                # Provide user feedback based on the result
-                if result and result.get("success"): # Check if result is not None
+                if result and result.get("success"): 
                     print(f"Action successful.")
                 else:
                     error_msg = "Unknown OS control error"
@@ -105,7 +94,6 @@ async def main():
         print(f"Critical error during setup or run: {e}")
     finally:
         logger.info("Shutting down agent...")
-        # Close is synchronous
         agent.close()
         logger.info("Agent shutdown complete.")
         print("Browser closed (OS control). Exiting program.")

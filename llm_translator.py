@@ -1,4 +1,3 @@
-# llm_translator.py
 import os
 import json
 from openai import AsyncOpenAI
@@ -8,7 +7,6 @@ import logging
 logger = logging.getLogger(__name__)
 load_dotenv()
 
-# Configure Groq client
 groq_api_key = os.environ.get("GROQ_API_KEY")
 if not groq_api_key:
     logger.warning("GROQ_API_KEY not found in environment variables.")
@@ -19,7 +17,6 @@ else:
         api_key=groq_api_key
     )
 
-# --- Updated System Prompt for OS Control ---
 SYSTEM_PROMPT = """
 You are an AI agent controlling a web browser **at the OS level** based on user commands.
 You **cannot** directly access the web page's structure (DOM). You interact by **simulating mouse clicks and keyboard input** based on visual cues described in text or seen in screenshots.
@@ -68,7 +65,6 @@ Example Response: {"action": "scroll", "parameters": {"direction": "down"}}
 
 Respond ONLY with a single JSON object containing the fields "action" (string) and "parameters" (object).
 """
-# --- End of Updated System Prompt ---
 
 async def translate_command_to_action(command: str, state: dict) -> dict | None:
     """
@@ -90,10 +86,10 @@ async def translate_command_to_action(command: str, state: dict) -> dict | None:
     log_state = {k: v for k, v in state.items() if k != 'screenshot_base64'}
     logger.debug(f"State received by OS translator: {json.dumps(log_state, indent=2)}")
 
-    action_json = None # Initialize for error handling scope
+    action_json = None
     try:
         prompt_state = state.copy()
-        max_text_length = 2000 # Limit visible text length in prompt
+        max_text_length = 2000
         if prompt_state.get("visible_text") and len(prompt_state["visible_text"]) > max_text_length:
             logger.warning(f"Truncating visible_text from {len(prompt_state['visible_text'])} to {max_text_length} for LLM prompt.")
             prompt_state["visible_text"] = prompt_state["visible_text"][:max_text_length] + "..."
@@ -107,16 +103,14 @@ async def translate_command_to_action(command: str, state: dict) -> dict | None:
 
         logger.info("------ LLM Request Payload ------")
         try:
-            # Attempt to pretty-print JSON for readability
             messages_json = json.dumps(messages, indent=2)
             logger.info(f"Messages:\n{messages_json}")
         except Exception:
-            # Fallback if JSON serialization fails for some reason
             logger.info(f"Messages (raw): {messages}")
         logger.info("---------------------------------")
 
         response = await aclient.chat.completions.create(
-            model="llama3-70b-8192", # Or another powerful model
+            model="llama3-70b-8192",
             messages=messages,
             response_format={"type": "json_object"},
             temperature=0.05,
@@ -127,7 +121,6 @@ async def translate_command_to_action(command: str, state: dict) -> dict | None:
         logger.info(f"LLM OS Control Response JSON: {action_json}")
         action_data = json.loads(action_json)
 
-        # --- Updated Validation for OS Control ---
         if not isinstance(action_data, dict):
              raise ValueError(f"LLM response is not a JSON object: {action_data}")
         if "action" not in action_data or not isinstance(action_data["action"], str):
@@ -138,7 +131,6 @@ async def translate_command_to_action(command: str, state: dict) -> dict | None:
         action_name = action_data["action"]
         params = action_data["parameters"]
 
-        # Action-specific parameter validation (OS Control version)
         if action_name == "navigate" and ("url" not in params or not isinstance(params.get("url"), str)):
              raise ValueError("LLM response for 'navigate' missing or invalid 'url' parameter.")
         if action_name in ["click", "type"] and ("target_description" not in params or not isinstance(params.get("target_description"), str)):
@@ -147,15 +139,11 @@ async def translate_command_to_action(command: str, state: dict) -> dict | None:
              raise ValueError("LLM response for action 'type' missing 'text' parameter.")
         if action_name == "scroll" and ("direction" not in params or params.get("direction") not in ["up", "down"]):
              raise ValueError("LLM response for 'scroll' missing or invalid 'direction' parameter.")
-        # +++ ADDED VALIDATION +++
         if action_name == "press_key" and ("key_name" not in params or not isinstance(params.get("key_name"), str)):
              raise ValueError("LLM response for 'press_key' missing or invalid 'key_name' parameter.")
-        # +++ END ADDED VALIDATION +++
 
-        # --- Update list of known actions ---
         if action_name not in ["navigate", "click", "type", "scroll", "press_key"]:
             raise ValueError(f"LLM proposed an unknown action: '{action_name}'")
-        # --- End of Updated Validation ---
 
         logger.info(f"OS Translation successful: Action='{action_name}', Params={params}")
         return action_data

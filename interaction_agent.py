@@ -1,10 +1,9 @@
-# interaction_agent.py
 import asyncio
 import logging
 from os_controller import OSController
 from extractor import extract_data
 from llm_translator import translate_command_to_action
-import json # Import json
+import json 
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,6 @@ class InteractionAgent:
         self._is_setup = False
         self._proxy_config = proxy_config
         self._extension_paths = extension_paths
-        # Store the loop created by main's asyncio.run (optional but can be useful)
         self._loop = asyncio.get_event_loop()
 
     def setup(self, initial_url: str = "about:blank"):
@@ -28,7 +26,6 @@ class InteractionAgent:
             logger.warning("Agent already set up.")
             return
         logger.info("Setting up Interaction Agent with OS Controller...")
-        # OSController setup is synchronous, so no change needed here
         result = self.controller.setup(
             url=initial_url,
             proxy_config=self._proxy_config,
@@ -48,12 +45,10 @@ class InteractionAgent:
             logger.warning("Agent not set up, cannot close.")
             return
         logger.info("Closing Interaction Agent (OS Controller)...")
-        # OSController teardown is synchronous
         self.controller.teardown()
         self._is_setup = False
         logger.info("Interaction Agent closed.")
 
-    # ******* CHANGED: Make interact async *******
     async def interact(self, command: str) -> dict:
         """
         Takes a natural language command, translates it, executes it via OS control,
@@ -70,23 +65,14 @@ class InteractionAgent:
             return {"success": False, "error": "Agent not initialized"}
 
         logger.info(f"Received OS command: '{command}'")
-
-        # 1. Get Current State (from OS perspective)
-        # NOTE: OSController methods are SYNCHRONOUS. Calling them from an async
-        # function might block the event loop if they take too long.
-        # For typical GUI interaction delays, this might be acceptable.
-        # If performance becomes an issue, use loop.run_in_executor.
         try:
-            current_state = self.controller.get_current_state() # Sync call
+            current_state = self.controller.get_current_state()
             log_state = {k: v for k, v in current_state.items() if k != 'screenshot_base64'}
-            logger.debug(f"Current OS State: {json.dumps(log_state, indent=2)}") # Use json.dumps for better formatting
+            logger.debug(f"Current OS State: {json.dumps(log_state, indent=2)}")
         except Exception as e:
             logger.error(f"Failed to get current OS state: {e}")
             return {"success": False, "error": f"Failed to get OS state: {e}"}
 
-        # --- PREPARE MESSAGES (Logging part remains the same) ---
-        print("DEBUG: Preparing messages for LLM translator...")
-        # ... (message preparation logic is fine) ...
         prompt_state = current_state.copy()
         max_text_length = 2000
         if prompt_state.get("visible_text") and len(prompt_state["visible_text"]) > max_text_length:
@@ -104,35 +90,25 @@ class InteractionAgent:
         try:
             messages_json = json.dumps(messages_payload, indent=2)
             logger.info(f"Messages:\n{messages_json}")
-            print("DEBUG: Successfully prepared and logged messages payload.")
         except Exception as log_err:
             logger.error(f"Failed to serialize messages for logging: {log_err}")
-            print(f"DEBUG: ERROR during logging preparation: {log_err}")
         logger.info("----------------------------------------------------")
 
 
-        # 2. Translate Command to OS Action
-        # ******* CHANGED: Directly await the async function *******
-        print("DEBUG: About to call LLM translator...")
         action_plan = None
         try:
-            # Directly await the async translator and apply a timeout
             action_plan = await asyncio.wait_for(
                 translate_command_to_action(command, current_state),
-                timeout=180.0 # Timeout in seconds
+                timeout=180.0 
             )
-            print("DEBUG: Translator finished.")
+
         except asyncio.TimeoutError:
-            print("DEBUG: LLM Translator timed out!")
             logger.error("LLM translation timed out after 180 seconds.")
             action_plan = None
         except Exception as e:
-            print(f"DEBUG: General error during translation call: {e}")
             logger.error(f"LLM translation failed: {e}")
             action_plan = None
 
-        print("DEBUG: LLM translator call completed (or failed).")
-        # ******* End of major change *******
 
         if not action_plan:
             logger.error("Failed to translate command to OS action plan.")
@@ -142,12 +118,8 @@ class InteractionAgent:
         params = action_plan.get("parameters", {})
         logger.info(f"Executing OS action: {action_name} with params: {params}")
 
-        # 3. Execute OS Action using OSController
-        # These calls remain synchronous as OSController methods are sync
         result = None
         try:
-            # Consider running these in an executor if they block too long
-            # e.g., result = await self._loop.run_in_executor(None, self.controller.navigate, **params)
             if action_name == "navigate":
                 result = self.controller.navigate(**params)
             elif action_name == "click":
@@ -169,7 +141,6 @@ class InteractionAgent:
         logger.info(f"OS Action result: {result}")
         return result
 
-    # extract method is already async, no changes needed there
     async def extract(self, query: str) -> dict:
         """
         Extracts structured data from the current screen content based on a query.
@@ -186,16 +157,14 @@ class InteractionAgent:
 
         logger.info(f"Received extraction query: '{query}'")
 
-        # 1. Get Current State (Sync call, potential blocker)
         try:
             current_state = self.controller.get_current_state()
         except Exception as e:
             logger.error(f"Failed to get current OS state for extraction: {e}")
             return {"error": f"Failed to get OS state for extraction: {e}"}
 
-        # 2. Call the extractor function (Async call)
         try:
-            extracted_data = await extract_data(query, current_state) # Already async
+            extracted_data = await extract_data(query, current_state)
             logger.info(f"Extraction result: {extracted_data}")
             return extracted_data
         except Exception as e:

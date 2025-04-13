@@ -1,10 +1,8 @@
-# browser_controller.py
-# (No changes needed to this file based on the request)
+
 import asyncio
 from playwright.async_api import async_playwright, Browser, Page, Playwright, Locator
 import logging
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -76,11 +74,9 @@ class AsyncBrowserController:
     async def _extract_element_details(self, locator: Locator) -> dict | None:
         """Extracts key details from a Playwright Locator."""
         try:
-            # Ensure the first match is visible before extracting
-            # Reduced timeout for potentially faster scanning, but might miss slow-loading elements
-            await locator.first.wait_for(state="visible", timeout=500) # Quick visibility check
+            await locator.first.wait_for(state="visible", timeout=500)
 
-            element = locator.first # Work with the first match
+            element = locator.first 
             tag = await element.evaluate('el => el.tagName.toLowerCase()')
             attrs = {
                 'text': await element.text_content(timeout=500) or "",
@@ -92,13 +88,10 @@ class AsyncBrowserController:
                 'role': await element.get_attribute('role', timeout=500) or "",
                 'value': await element.evaluate('el => el.value', timeout=500) or "", # Get current value for inputs
             }
-             # Filter out empty attributes for brevity
             details = {k: v for k, v in attrs.items() if v}
             details['tag'] = tag
             return details
         except Exception as e:
-            # Ignore elements that become non-visible quickly or cause errors
-            # logger.debug(f"Error extracting details: {e}")
             return None
 
     async def get_interactive_elements(self) -> list[dict]:
@@ -106,7 +99,6 @@ class AsyncBrowserController:
         if not self.page or self.page.is_closed(): return []
         logger.info("Extracting interactive elements...")
         elements = []
-        # Common interactive element selectors
         selectors = [
             "button",
             "a[href]",
@@ -122,12 +114,11 @@ class AsyncBrowserController:
             "[contenteditable='true']",
         ]
 
-        max_elements = 30 # Limit to avoid overly long prompts
+        max_elements = 30
         count = 0
 
         element_tasks = []
 
-        # Use Promise.all style execution for finding elements
         all_locators = []
         for selector in selectors:
             try:
@@ -137,13 +128,11 @@ class AsyncBrowserController:
                  logger.warning(f"Could not create locator for selector '{selector}': {e}")
 
 
-        # Process locators concurrently
         locator_results = await asyncio.gather(
             *[loc.all() for loc in all_locators],
-            return_exceptions=True # Don't let one locator error stop others
+            return_exceptions=True
         )
 
-        # Now extract details sequentially but only up to the limit
         for i, result in enumerate(locator_results):
             if isinstance(result, Exception):
                 logger.warning(f"Error fetching elements for selector group {i}: {result}")
@@ -152,17 +141,12 @@ class AsyncBrowserController:
             for element_handle in result:
                  if count >= max_elements: break
                  try:
-                     # We need the locator to use _extract_element_details easily
-                     # This part isn't easily parallelizable with the current _extract_element_details
-                     # Reverting to sequential extraction per selector type for simplicity here
-                     # For true parallel extraction, _extract_element_details would need refactoring
-                     pass # Placeholder - see sequential logic below
+                     pass 
                  except Exception as e:
                      # logger.debug(f"Error processing handle: {e}")
                      pass
 
 
-        # Revert to sequential extraction loop (more reliable with current structure)
         for selector in selectors:
              if count >= max_elements: break
              try:
@@ -172,19 +156,16 @@ class AsyncBrowserController:
                      if count >= max_elements: break
                      try:
                          element_locator = locator.nth(i)
-                         # Check visibility *before* extracting details
-                         if await element_locator.is_visible(timeout=500): # Quick check
+                         if await element_locator.is_visible(timeout=500):
                              details = await self._extract_element_details(element_locator)
                              if details:
                                  elements.append(details)
                                  count += 1
-                         # else: logger.debug(f"Element {i} for selector '{selector}' not visible, skipping.")
                      except Exception as inner_e:
-                         # logger.debug(f"Skipping element {i} for selector '{selector}': {inner_e}")
-                         continue # Skip problematic elements
+                         continue
              except Exception as e:
                  logger.warning(f"Error locating elements with selector '{selector}': {e}")
-                 continue # Continue with next selector if one fails
+                 continue
 
 
         logger.info(f"Extracted {len(elements)} interactive elements.")
@@ -203,43 +184,37 @@ class AsyncBrowserController:
             return {"url": url, "title": title, "elements": elements}
         except Exception as e:
             logger.error(f"Error getting current page state: {e}")
-            # Attempt to return partial info if possible
             url = "Error"
             title = "Error"
             try:
                 if self.page and not self.page.is_closed():
                     url = self.page.url
-                    title = await self.page.title() # Might fail again
+                    title = await self.page.title() 
             except Exception:
                 pass
             return {"url": url, "title": title, "elements": []}
 
-    # --- Methods requiring accurate selectors ---
     async def click(self, selector: str):
         if not self.page or self.page.is_closed():
             logger.error("Click failed: Page not initialized or closed.")
             raise Exception("Page not initialized or closed")
         logger.info(f"Attempting to click selector: {selector}")
         try:
-            locator = self.page.locator(selector).first # Target the first match
+            locator = self.page.locator(selector).first 
             await locator.wait_for(state="visible", timeout=ELEMENT_TIMEOUT)
-            # Added hover and brief pause, sometimes helps with dynamic elements
             await locator.hover(timeout=2000)
             await asyncio.sleep(0.1)
-            await locator.scroll_into_view_if_needed(timeout=5000) # Ensure it's in view
+            await locator.scroll_into_view_if_needed(timeout=5000) 
             await locator.click(timeout=5000)
-            # Wait for potential navigation or dynamic changes
-            await self.page.wait_for_load_state("domcontentloaded", timeout=10000) # Wait longer
-            await asyncio.sleep(1) # Small buffer
+            await self.page.wait_for_load_state("domcontentloaded", timeout=10000) 
+            await asyncio.sleep(1) 
             logger.info(f"Click successful. Current URL: {self.page.url}")
             return {"success": True, "url": self.page.url}
         except Exception as e:
             logger.error(f"Error clicking {selector}: {e}")
-            # Attempt a JS click as a fallback
             try:
                 logger.warning("Standard click failed. Attempting JS click fallback...")
                 locator = self.page.locator(selector).first
-                # Ensure element exists before JS click
                 await locator.wait_for(state="attached", timeout=ELEMENT_TIMEOUT)
                 await locator.evaluate("el => el.click()")
                 await self.page.wait_for_load_state("domcontentloaded", timeout=10000)
@@ -260,11 +235,7 @@ class AsyncBrowserController:
             locator = self.page.locator(selector).first # Target the first match
             await locator.wait_for(state="visible", timeout=ELEMENT_TIMEOUT)
             await locator.scroll_into_view_if_needed(timeout=5000)
-            await locator.fill(text) # Use fill for reliability
-            # Optional: Add a small delay or wait for some condition if needed
-            # await asyncio.sleep(0.5)
-            # Optional: Press Enter/Tab if usually required after typing
-            # await locator.press('Enter')
+            await locator.fill(text) 
             logger.info(f"Typing successful.")
             return {"success": True}
         except Exception as e:

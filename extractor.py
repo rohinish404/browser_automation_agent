@@ -1,4 +1,4 @@
-# extractor.py
+
 import json
 import logging
 from llm_translator import aclient 
@@ -18,7 +18,6 @@ Do not invent information not present in the text.
 Focus solely on the extraction task based on the text provided.
 """
 
-# --- Extraction Method 1: LLM based on Visible Text ---
 async def extract_data_from_text(query: str, visible_text: str | None) -> dict:
     """
     Uses an LLM to extract structured data based on a query from visible text content.
@@ -31,7 +30,6 @@ async def extract_data_from_text(query: str, visible_text: str | None) -> dict:
         return {"error": "LLM client not initialized."}
 
     logger.info(f"Attempting extraction for query: '{query}'")
-    # logger.debug(f"Visible text for extraction:\n{visible_text[:500]}...") # Log snippet
 
     messages = [
         {"role": "system", "content": EXTRACT_SYSTEM_PROMPT},
@@ -40,10 +38,10 @@ async def extract_data_from_text(query: str, visible_text: str | None) -> dict:
 
     try:
         response = await aclient.chat.completions.create(
-            model="llama3-70b-8192", # Or another suitable model
+            model="llama3-70b-8192",
             messages=messages,
             response_format={"type": "json_object"},
-            temperature=0.0, # Deterministic extraction
+            temperature=0.0,
         )
 
         extracted_json_str = response.choices[0].message.content
@@ -58,7 +56,6 @@ async def extract_data_from_text(query: str, visible_text: str | None) -> dict:
         logger.error(f"Error during LLM extraction: {e}")
         return {"error": f"LLM extraction failed: {e}"}
 
-# --- Extraction Method 2: Vision Model (Optional - More Advanced) ---
 async def extract_data_with_vision(query: str, screenshot_base64: str | None) -> dict:
     """
     Uses a vision-capable LLM to extract structured data based on a query from a screenshot.
@@ -67,13 +64,12 @@ async def extract_data_with_vision(query: str, screenshot_base64: str | None) ->
     if not screenshot_base64:
         logger.warning("Vision extraction called with no screenshot provided.")
         return {"error": "No screenshot available for vision extraction."}
-    if not aclient: # Or your vision-specific client
+    if not aclient:
         logger.error("LLM client not available for vision extraction.")
         return {"error": "LLM client not initialized."}
 
     logger.info(f"Attempting vision extraction for query: '{query}'")
 
-    # Construct messages for a vision model
     messages = [
         {
             "role": "system",
@@ -92,13 +88,12 @@ async def extract_data_with_vision(query: str, screenshot_base64: str | None) ->
     ]
 
     try:
-        # Ensure you are using a model that supports vision input
         response = await aclient.chat.completions.create(
-            model="gpt-4o", # Or another vision model like "gemini-pro-vision"
+            model="gpt-4o", 
             messages=messages,
             response_format={"type": "json_object"},
             temperature=0.0,
-            max_tokens=1000, # Adjust as needed
+            max_tokens=1000,
         )
 
         extracted_json_str = response.choices[0].message.content
@@ -123,26 +118,18 @@ async def extract_data(query: str, state: dict) -> dict:
     screenshot_base64 = state.get("screenshot_base64")
     visible_text = state.get("visible_text")
 
-    # --- Choose Extraction Strategy ---
-    # Strategy 1: Use Vision Model if available (Generally more accurate for visual layout)
-    # (Uncomment this block if you want to prioritize vision)
     if screenshot_base64:
         logger.info("Using vision-based extraction.")
-        # Make sure your LLM client (aclient) and model support vision
-        # return await extract_data_with_vision(query, screenshot_base64)
-        pass # Comment this pass if using vision
+        pass
 
-    # Strategy 2: Use Text-Based Extraction (Fallback or default)
     if visible_text:
         logger.info("Using text-based extraction.")
         return await extract_data_from_text(query, visible_text)
     elif screenshot_base64:
-         # Fallback to vision if text OCR failed but screenshot exists
          logger.info("No visible text from OCR, falling back to vision-based extraction.")
-         # return await extract_data_with_vision(query, screenshot_base64)
-         return {"error": "Visible text OCR failed, Vision extraction not implemented/enabled."} # Placeholder if vision is commented out
+         return {"error": "Visible text OCR failed, Vision extraction not implemented/enabled."}
 
-    # Strategy 3: No content available
+
     else:
         logger.error("No screenshot or visible text available for extraction.")
         return {"error": "No content available to extract from."}
