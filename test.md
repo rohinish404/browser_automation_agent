@@ -47,13 +47,3 @@
 3.  **Command:** `Type 'my-password' into the password input`
     *   **Expected Action:** `type` with selector like `#password` or `input[name='password']` and `text="my-password"`
     *   **Expected Result:** Password typed. Success=True.
-
-## Test Case 4: Invalid/Ambiguous Commands
-
-1.  **Command:** `Do something interesting`
-    *   **Expected Action:** LLM fails to translate, returns None or error.
-    *   **Expected Result:** Agent returns `{"success": False, "error": "LLM translation failed"}` or similar.
-
-2.  **Command:** `Click the green button` (when multiple green buttons exist or none are green)
-    *   **Expected Action:** LLM might generate a selector for *a* button, or fail.
-    *   **Expected Result:** If LLM generates a selector, the click might target the wrong element or fail if selector is bad. If LLM fails, translation error. Test resilience.

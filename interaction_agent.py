@@ -1,4 +1,4 @@
-# interaction_agent.py
+
 import asyncio
 import logging
 
@@ -57,11 +57,8 @@ class InteractionAgent:
 
         logger.info(f"Received command: '{command}'")
 
-        # 1. Get Current State
         try:
             current_state = await self.controller.get_current_state()
-            # Avoid printing huge state logs by default
-            # logger.debug(f"Current State: {current_state}")
             if current_state.get("url") == "N/A - Page Closed":
                  logger.error("Browser page seems to be closed unexpectedly.")
                  return {"success": False, "error": "Browser page is closed"}
@@ -69,7 +66,6 @@ class InteractionAgent:
             logger.error(f"Failed to get current browser state: {e}")
             return {"success": False, "error": f"Failed to get browser state: {e}"}
 
-        # 2. Translate Command to Action
         action_plan = await translate_command_to_action(command, current_state)
 
         if not action_plan:
@@ -80,7 +76,6 @@ class InteractionAgent:
         params = action_plan.get("parameters", {})
         logger.info(f"Executing action: {action_name} with params: {params}")
 
-        # 3. Execute Action
         result = None
         try:
             if action_name == "navigate":
@@ -92,7 +87,6 @@ class InteractionAgent:
             elif action_name == "scroll":
                 result = await self.controller.scroll(**params)
             else:
-                # This case should ideally be caught by translator validation
                 logger.error(f"Unknown action received from translator: {action_name}")
                 result = {"success": False, "error": f"Unknown action: {action_name}"}
 

@@ -1,4 +1,3 @@
-# llm_translator.py
 import os
 import json
 from openai import AsyncOpenAI
@@ -8,13 +7,10 @@ import logging
 logger = logging.getLogger(__name__)
 load_dotenv()
 
-# Configure Groq client
 groq_api_key = os.environ.get("GROQ_API_KEY")
 if not groq_api_key:
     logger.warning("GROQ_API_KEY not found in environment variables.")
-    # Optionally raise an error or provide a default behavior
-    # raise ValueError("GROQ_API_KEY must be set")
-    aclient = None # Or configure a fallback client if desired
+    aclient = None
 else:
     aclient = AsyncOpenAI(
         base_url="https://api.groq.com/openai/v1",
@@ -95,13 +91,11 @@ async def translate_command_to_action(command: str, state: dict) -> dict | None:
         return None
 
     logger.info(f"Translating command: '{command}'")
-    # logger.debug(f"State received by translator: {json.dumps(state, indent=2)}") # Uncomment for deep debugging state
 
-    action_json = None # Initialize for error handling scope
+    action_json = None
     try:
-        # Prepare state for prompt, truncate elements if too long
         prompt_state = state.copy()
-        max_elements_in_prompt = 25 # Limit elements sent to LLM
+        max_elements_in_prompt = 25
         if len(prompt_state.get("elements", [])) > max_elements_in_prompt:
              logger.warning(f"Truncating elements list from {len(prompt_state['elements'])} to {max_elements_in_prompt} for LLM prompt.")
              prompt_state["elements"] = prompt_state["elements"][:max_elements_in_prompt]
@@ -112,19 +106,17 @@ async def translate_command_to_action(command: str, state: dict) -> dict | None:
         ]
 
         response = await aclient.chat.completions.create(
-            model="llama3-70b-8192", # Powerful model for complex instructions
+            model="llama3-70b-8192",
             messages=messages,
             response_format={"type": "json_object"},
-            temperature=0.05, # Low temperature for deterministic output
-            max_tokens=500, # Limit response size
-            # Consider adding stop sequences if needed
+            temperature=0.05,
+            max_tokens=500,
         )
 
         action_json = response.choices[0].message.content
         logger.info(f"LLM Response JSON: {action_json}")
         action_data = json.loads(action_json)
 
-        # Basic validation
         if not isinstance(action_data, dict):
              raise ValueError(f"LLM response is not a JSON object: {action_data}")
         if "action" not in action_data or not isinstance(action_data["action"], str):
@@ -135,7 +127,6 @@ async def translate_command_to_action(command: str, state: dict) -> dict | None:
         action_name = action_data["action"]
         params = action_data["parameters"]
 
-        # Action-specific parameter validation
         if action_name == "navigate" and ("url" not in params or not isinstance(params.get("url"), str)):
              raise ValueError("LLM response for 'navigate' missing or invalid 'url' parameter.")
         if action_name in ["click", "type"] and ("selector" not in params or not isinstance(params.get("selector"), str)):
@@ -155,6 +146,5 @@ async def translate_command_to_action(command: str, state: dict) -> dict | None:
         logger.error(f"Error parsing LLM JSON response: {e}\nRaw Response: {action_json}")
         return None
     except Exception as e:
-        # Catch OpenAI specific errors if needed, or general exceptions
         logger.error(f"Error interacting with LLM or validating response: {e}")
         return None
