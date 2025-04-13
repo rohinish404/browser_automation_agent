@@ -57,3 +57,17 @@
 2.  **Command:** `Click the green button` (when multiple green buttons exist or none are green)
     *   **Expected Action:** LLM might generate a selector for *a* button, or fail.
     *   **Expected Result:** If LLM generates a selector, the click might target the wrong element or fail if selector is bad. If LLM fails, translation error. Test resilience.
+
+
+
+
+
+
+
+
+
+
+Navigate to https://github.com/login
+Type "" into the github username field
+Type "" into the github password field
+Click the github sign in button
