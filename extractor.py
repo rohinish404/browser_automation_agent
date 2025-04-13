@@ -85,7 +85,7 @@ async def extract_data_with_vision(query: str, screenshot_base64: str | None) ->
                 {"type": "text", "text": f"Extraction Query: \"{query}\""},
                 {
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{screenshot_base64}"},
+                    "image_url": {"url": f"data:image/Go to github.com/login;base64,{screenshot_base64}"},
                 },
             ],
         }

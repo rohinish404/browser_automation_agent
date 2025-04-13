@@ -2,17 +2,16 @@
 import asyncio
 import logging
 import argparse
+import json # Make sure json is imported
 
-from interaction_agent import InteractionAgent # Added for command-line arguments
-
+from interaction_agent import InteractionAgent
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-# Optional: Set pyautogui logging level if needed
-# logging.getLogger('pyautogui').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # --- Command Line Argument Parsing ---
+# ... (argument parsing remains the same) ...
 parser = argparse.ArgumentParser(description="Run Browser Navigation Agent with OS Control")
 parser.add_argument(
     "--proxy",
@@ -34,14 +33,11 @@ parser.add_argument(
     help="The initial URL to navigate to when the browser starts"
 )
 args = parser.parse_args()
-# --- End Argument Parsing ---
 
 async def main():
-    # --- Instantiate the agent with proxy/extension config ---
     agent = InteractionAgent(proxy_config=args.proxy, extension_paths=args.load_extension)
     try:
-        # Setup the agent (which internally sets up the OS controller and launches browser)
-        # Pass the starting URL
+        # Setup is synchronous
         agent.setup(initial_url=args.start_url)
 
         print("\nBrowser Navigation Agent Initialized (OS Control Mode).")
@@ -52,7 +48,10 @@ async def main():
 
         while True:
             try:
-                command_input = input("> ")
+                # Use asyncio.to_thread for synchronous input in async context
+                # to avoid blocking the event loop entirely while waiting for user input
+                command_input = await asyncio.to_thread(input, "> ")
+
                 if not command_input:
                     continue
                 if command_input.lower() in ['quit', 'exit']:
@@ -67,24 +66,30 @@ async def main():
                         print("Please provide a query after 'extract:'. Example: 'extract: the price'")
                         continue
                     print(f"--- Performing Extraction: '{query}' ---")
-                    # Use the agent's extract method
-                    result = await agent.extract(query) # Extractor is async
+                    # Use await as agent.extract is async
+                    result = await agent.extract(query)
                     print("--- Extraction Result ---")
-                    print(json.dumps(result, indent=2))
+                    # Ensure result is printable, handle potential non-JSON data
+                    try:
+                        print(json.dumps(result, indent=2))
+                    except TypeError:
+                         print(result) # Print raw if not JSON serializable
                     print("-" * 20)
-                    continue # Go to next loop iteration after extraction
+                    continue
 
                 # --- Handle Interaction Command ---
                 print(f"--- Sending Command: '{command_input}' ---")
-                # Use the agent's interact method (now uses OSController)
-                # interact is synchronous in this OS control example
-                result = agent.interact(command_input)
+                # ******* CHANGED: Use await as agent.interact is now async *******
+                result = await agent.interact(command_input)
 
                 # Provide user feedback based on the result
-                if result.get("success"):
+                if result and result.get("success"): # Check if result is not None
                     print(f"Action successful.")
                 else:
-                    print(f"Action failed: {result.get('error', 'Unknown OS control error')}")
+                    error_msg = "Unknown OS control error"
+                    if result and result.get("error"):
+                        error_msg = result.get("error")
+                    print(f"Action failed: {error_msg}")
 
                 print("-" * 20)
 
@@ -100,17 +105,13 @@ async def main():
         print(f"Critical error during setup or run: {e}")
     finally:
         logger.info("Shutting down agent...")
-        agent.close() # Uses OSController teardown
+        # Close is synchronous
+        agent.close()
         logger.info("Agent shutdown complete.")
         print("Browser closed (OS control). Exiting program.")
 
 
 if __name__ == "__main__":
-    # Pyautogui might have issues in some environments, this is a basic run structure
-    # Note: Since OSController is mostly synchronous, running its methods directly
-    # from the agent's interact method might be simpler than full asyncio if
-    # the translator itself doesn't require async deeply. Here, we kept main async
-    # primarily because the extractor *could* be async.
     try:
        asyncio.run(main())
     except KeyboardInterrupt:

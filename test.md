@@ -34,40 +34,15 @@
     *   **Expected Action:** `click` with selector like `a:has-text('API reference')`
     *   **Expected Result:** Navigates to the API reference section/page. Success=True.
 
-## Test Case 3: Input Fields
 
-1.  **Command:** `Go to github.com/login`
-    *   **Expected Action:** `navigate`
-    *   **Expected Result:** GitHub login page loads. Success=True.
+## stage 2 test case
 
-2.  **Command:** `Enter 'my-username' into the username field`
-    *   **Expected Action:** `type` with selector like `#login_field` or `input[name='login']` and `text="my-username"`
-    *   **Expected Result:** Username typed. Success=True.
-
-3.  **Command:** `Type 'my-password' into the password input`
-    *   **Expected Action:** `type` with selector like `#password` or `input[name='password']` and `text="my-password"`
-    *   **Expected Result:** Password typed. Success=True.
-
-## Test Case 4: Invalid/Ambiguous Commands
-
-1.  **Command:** `Do something interesting`
-    *   **Expected Action:** LLM fails to translate, returns None or error.
-    *   **Expected Result:** Agent returns `{"success": False, "error": "LLM translation failed"}` or similar.
-
-2.  **Command:** `Click the green button` (when multiple green buttons exist or none are green)
-    *   **Expected Action:** LLM might generate a selector for *a* button, or fail.
-    *   **Expected Result:** If LLM generates a selector, the click might target the wrong element or fail if selector is bad. If LLM fails, translation error. Test resilience.
+Go to 'https://github.com/login'
+Type "unboxtech404" into the username field
+Type "unboxtech03" into the password field
+press enter
+scroll down
+extract: the trending repository names 
 
 
 
-
-
-
-
-
-
-
-Navigate to https://github.com/login
-Type "" into the github username field
-Type "" into the github password field
-Click the github sign in button

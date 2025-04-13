@@ -19,6 +19,8 @@ class InteractionAgent:
         self._is_setup = False
         self._proxy_config = proxy_config
         self._extension_paths = extension_paths
+        # Store the loop created by main's asyncio.run (optional but can be useful)
+        self._loop = asyncio.get_event_loop()
 
     def setup(self, initial_url: str = "about:blank"):
         """Initializes the OS controller and launches the native browser."""
@@ -26,6 +28,7 @@ class InteractionAgent:
             logger.warning("Agent already set up.")
             return
         logger.info("Setting up Interaction Agent with OS Controller...")
+        # OSController setup is synchronous, so no change needed here
         result = self.controller.setup(
             url=initial_url,
             proxy_config=self._proxy_config,
@@ -45,14 +48,16 @@ class InteractionAgent:
             logger.warning("Agent not set up, cannot close.")
             return
         logger.info("Closing Interaction Agent (OS Controller)...")
-        self.controller.teardown() # OSController uses teardown
+        # OSController teardown is synchronous
+        self.controller.teardown()
         self._is_setup = False
         logger.info("Interaction Agent closed.")
 
-    def interact(self, command: str) -> dict:
+    # ******* CHANGED: Make interact async *******
+    async def interact(self, command: str) -> dict:
         """
         Takes a natural language command, translates it, executes it via OS control,
-        and returns the result.
+        and returns the result. Now ASYNCHRONOUS.
 
         Args:
             command: The natural language command from the user.
@@ -67,27 +72,27 @@ class InteractionAgent:
         logger.info(f"Received OS command: '{command}'")
 
         # 1. Get Current State (from OS perspective)
+        # NOTE: OSController methods are SYNCHRONOUS. Calling them from an async
+        # function might block the event loop if they take too long.
+        # For typical GUI interaction delays, this might be acceptable.
+        # If performance becomes an issue, use loop.run_in_executor.
         try:
-            current_state = self.controller.get_current_state()
+            current_state = self.controller.get_current_state() # Sync call
             log_state = {k: v for k, v in current_state.items() if k != 'screenshot_base64'}
-            # print(log_state)
             logger.debug(f"Current OS State: {json.dumps(log_state, indent=2)}") # Use json.dumps for better formatting
         except Exception as e:
             logger.error(f"Failed to get current OS state: {e}")
             return {"success": False, "error": f"Failed to get OS state: {e}"}
-        
-         # --- PREPARE MESSAGES (This part is usually in llm_translator, but let's do it here for logging) ---
-    # This replicates the message preparation logic from llm_translator.py
-    # to ensure we log the *exact* payload *before* the async call hangs.
 
+        # --- PREPARE MESSAGES (Logging part remains the same) ---
         print("DEBUG: Preparing messages for LLM translator...")
+        # ... (message preparation logic is fine) ...
         prompt_state = current_state.copy()
         max_text_length = 2000
         if prompt_state.get("visible_text") and len(prompt_state["visible_text"]) > max_text_length:
             prompt_state["visible_text"] = prompt_state["visible_text"][:max_text_length] + "..."
         prompt_state.pop("screenshot_base64", None)
 
-        # Get the system prompt content from llm_translator
         from llm_translator import SYSTEM_PROMPT
 
         messages_payload = [
@@ -95,7 +100,6 @@ class InteractionAgent:
             {"role": "user", "content": f"Command: \"{command}\"\nCurrent State: {json.dumps(prompt_state)}"}
         ]
 
-        # --- Log the Prepared Payload ---
         logger.info("------ LLM Request Payload (Prepared in Agent) ------")
         try:
             messages_json = json.dumps(messages_payload, indent=2)
@@ -108,47 +112,28 @@ class InteractionAgent:
 
 
         # 2. Translate Command to OS Action
-        # Need to run the async translator in the current event loop if main is async,
-        # or run it synchronously if the interact method itself is not async.
-        # Running synchronously for simplicity in this example:
+        # ******* CHANGED: Directly await the async function *******
         print("DEBUG: About to call LLM translator...")
+        action_plan = None
         try:
-            # Check if an event loop is running, if not, start one temporarily
-            loop = asyncio.get_event_loop()
-            print(f"DEBUG: Event loop running? {loop.is_running()}")
-            if loop.is_running():
-                 # If called from an async context (like main), create a task
-                 # This might require making interact() async itself
-                 # For now, assume interact is called synchronously or handle appropriately
-                 # action_plan = await asyncio.create_task(translate_command_to_action(command, current_state)) # If interact is async
-                 action_plan = asyncio.run_coroutine_threadsafe(
-                    translate_command_to_action(command, current_state),
-                    loop
-                 ).result(timeout=180) # If interact is sync but called from thread with loop
-                 print("DEBUG: Translator finished (via run_coroutine_threadsafe).")
-            else:
-                 # If no loop running, run it synchronously
-                 action_plan = asyncio.run(translate_command_to_action(command, current_state))
-                 print("DEBUG: Translator finished (via asyncio.run).")
-        except asyncio.TimeoutError: # Catch the timeout
-            print("DEBUG: LLM Translator timed out!") # <--- ADD THIS
-            logger.error("LLM translation timed out.")
+            # Directly await the async translator and apply a timeout
+            action_plan = await asyncio.wait_for(
+                translate_command_to_action(command, current_state),
+                timeout=180.0 # Timeout in seconds
+            )
+            print("DEBUG: Translator finished.")
+        except asyncio.TimeoutError:
+            print("DEBUG: LLM Translator timed out!")
+            logger.error("LLM translation timed out after 180 seconds.")
             action_plan = None
-        except RuntimeError: # Handle cases where no event loop exists or is already closed
-            print(f"DEBUG: Runtime error during translation call: {e}")
-            try:
-                action_plan = asyncio.run(translate_command_to_action(command, current_state))
-                print("DEBUG: Translator finished (via fallback asyncio.run).")
-            except Exception as final_e:
-              print(f"DEBUG: Fallback translation call failed: {final_e}") # <--- ADD THIS
-              logger.error(f"LLM translation failed even in fallback: {final_e}")
-              action_plan = None
         except Exception as e:
-            print(f"DEBUG: General error during translation call: {e}") # <--- ADD THIS
+            print(f"DEBUG: General error during translation call: {e}")
             logger.error(f"LLM translation failed: {e}")
             action_plan = None
 
         print("DEBUG: LLM translator call completed (or failed).")
+        # ******* End of major change *******
+
         if not action_plan:
             logger.error("Failed to translate command to OS action plan.")
             return {"success": False, "error": "LLM OS translation failed"}
@@ -158,8 +143,11 @@ class InteractionAgent:
         logger.info(f"Executing OS action: {action_name} with params: {params}")
 
         # 3. Execute OS Action using OSController
+        # These calls remain synchronous as OSController methods are sync
         result = None
         try:
+            # Consider running these in an executor if they block too long
+            # e.g., result = await self._loop.run_in_executor(None, self.controller.navigate, **params)
             if action_name == "navigate":
                 result = self.controller.navigate(**params)
             elif action_name == "click":
@@ -168,10 +156,8 @@ class InteractionAgent:
                 result = self.controller.type(text=params.get("text", ""), target_description=params.get("target_description", "unknown target"))
             elif action_name == "scroll":
                 result = self.controller.scroll(**params)
-            # +++ ADDED CASE +++
             elif action_name == "press_key":
                 result = self.controller.press_key(**params)
-            # +++ END ADDED CASE +++
             else:
                 logger.error(f"Unknown action received from translator: {action_name}")
                 result = {"success": False, "error": f"Unknown action: {action_name}"}
@@ -183,6 +169,7 @@ class InteractionAgent:
         logger.info(f"OS Action result: {result}")
         return result
 
+    # extract method is already async, no changes needed there
     async def extract(self, query: str) -> dict:
         """
         Extracts structured data from the current screen content based on a query.
@@ -199,16 +186,16 @@ class InteractionAgent:
 
         logger.info(f"Received extraction query: '{query}'")
 
-        # 1. Get Current State (includes visible_text and maybe screenshot)
+        # 1. Get Current State (Sync call, potential blocker)
         try:
             current_state = self.controller.get_current_state()
         except Exception as e:
             logger.error(f"Failed to get current OS state for extraction: {e}")
             return {"error": f"Failed to get OS state for extraction: {e}"}
 
-        # 2. Call the extractor function
+        # 2. Call the extractor function (Async call)
         try:
-            extracted_data = await extract_data(query, current_state)
+            extracted_data = await extract_data(query, current_state) # Already async
             logger.info(f"Extraction result: {extracted_data}")
             return extracted_data
         except Exception as e:
